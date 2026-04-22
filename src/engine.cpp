@@ -31,6 +31,8 @@ using namespace std::chrono_literals;
 
 #include <third_party/stb/stb_image_write.h>
 
+#include <third_party/diamondSquare/diamondSquare.h>
+
 inline std::string timeDateString () {
 	auto now = std::chrono::system_clock::now();
 	auto inTime_t = std::chrono::system_clock::to_time_t( now );
@@ -696,6 +698,72 @@ void PrometheusInstance::initResources () {
 		SetDebugName( VK_OBJECT_TYPE_IMAGE, ( uint64_t ) LenticularLUT.image, "Lenticular LUT" );
 	}
 
+	{ // creating the heightmap
+		const uint32_t dim = 1024;
+			long unsigned int seed = std::chrono::system_clock::now().time_since_epoch().count();
+
+			std::default_random_engine engine{ seed };
+			std::uniform_real_distribution< float > distribution{ 0.0f, 1.0f };
+
+			// #define TILE
+#ifdef TILE
+			const auto size = dim;
+#else
+			const auto size = dim + 1; // for no_wrap
+#endif
+
+			const auto edge = size - 1;
+			std::vector< std::vector< float > > data;
+			data.resize( size );
+			for ( uint32_t i = 0; i < size; i++ ) {
+				data[ i ].resize( size );
+			}
+
+			// data[ 0 ][ 0 ] = data[ edge ][ 0 ] = data[ 0 ][ edge ] = data[ edge ][ edge ] = 0.25f;
+
+			std::uniform_real_distribution< float > distribution_init{ 0.0f, 1.5f };
+			data[ 0 ][ 0 ] = distribution_init( engine );
+			data[ edge ][ 0 ] = distribution_init( engine );
+			data[ 0 ][ edge ] = distribution_init( engine );
+			data[ edge ][ edge ] = distribution_init( engine );
+
+#ifdef TILE
+			heightfield::diamond_square_wrap
+		#else
+			heightfield::diamond_square_no_wrap
+		#endif
+			(size,
+				// random
+				[ &engine, &distribution ]( float range ) {
+					return distribution( engine ) * range;
+				},
+				// variance
+				[]( int level ) -> float {
+					return std::pow( 0.5f, level );
+					// return static_cast<float>( std::numeric_limits<float>::max() / 2 ) * std::pow(0.5f, level);
+					// return static_cast<float>(std::numeric_limits<float>::max()/1.6) * std::pow(0.5f, level);
+				},
+				// at
+				[ &data ]( int x, int y ) -> float& {
+					return data[ x ][ y ];
+				}
+			);
+
+		// we have the thing in data[ x ][ y ], need it in a linearized format (+ integer conversion)
+		std::vector< int32_t > heightmap;
+		int maxHeight = 0;
+		heightmap.reserve( dim * dim );
+		for ( size_t x = 0; x < dim; x++ ) {
+			for ( size_t y = 0; y < dim; y++ ) {
+				int32_t value = std::clamp( data[ x ][ y ], 0.0f, 5.0f ) * ( 1 << 16 );
+				maxHeight = std::max( maxHeight, value ); // need to know this for dropping particles?
+				heightmap.emplace_back( value );
+			}
+		}
+		Heightmap = createImage( ( void* ) heightmap.data(), { dim, dim , 1 }, VK_FORMAT_R32_SINT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT );
+		SetDebugName( VK_OBJECT_TYPE_IMAGE, ( uint64_t ) Heightmap.image, "Heightmap" );
+	}
+
 	// make sure to clean up at the end
 	mainDeletionQueue.push_function([ & ] () {
 		// destroying buffers
@@ -704,6 +772,7 @@ void PrometheusInstance::initResources () {
 		// destroying images
 		destroyImage( Accumulator );
 		destroyImage( LenticularLUT );
+		destroyImage( Heightmap );
 	});
 }
 

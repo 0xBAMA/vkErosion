@@ -142,6 +142,10 @@ public:
 	// resolving the output image
 	ComputeEffect OutputResolve;
 
+	// holding the erosion sim state
+	AllocatedImage Heightmap;
+	ComputeEffect HeightmapErode;
+
 	// engine triggers
 	bool resizeRequest { false };
 	bool isInitialized { false };
