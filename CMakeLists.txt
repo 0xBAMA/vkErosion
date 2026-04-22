@@ -3,7 +3,7 @@
 #
 cmake_minimum_required ( VERSION 3.8 )
 
-project ( "VkLenticular" )
+project ( "vkErosion" )
 
 # vulkan stuff
 find_package( Vulkan REQUIRED )

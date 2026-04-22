@@ -69,7 +69,7 @@ struct GlobalData {
 	// zooming in and out
 	float zoomFactor{ 3.0f };
 
-	int gridBaseDim = 64;
+	int gridBaseDim = 128;
 	int gridDivisions = 64;
 
 	float angleScale = 1.0f;
