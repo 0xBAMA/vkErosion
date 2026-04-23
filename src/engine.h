@@ -78,6 +78,7 @@ struct GlobalData {
 
 	int linearFilter = 0;
 	int numRepeats = 1;
+	int maxHeight = 0;
 };
 
 // smallest scope CPU->GPU passing of information

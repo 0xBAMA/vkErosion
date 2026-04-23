@@ -749,14 +749,14 @@ void PrometheusInstance::initResources () {
 				}
 			);
 
-		// we have the thing in data[ x ][ y ], need it in a linearized format (+ integer conversion)
+		// we have the thing in data[ x ][ y ], need it in a linearized format (+ integer conversion and tracking the normalization factor)
 		std::vector< int32_t > heightmap;
-		int maxHeight = 0;
+		globalData.maxHeight = 0;
 		heightmap.reserve( dim * dim );
 		for ( size_t x = 0; x < dim; x++ ) {
 			for ( size_t y = 0; y < dim; y++ ) {
-				int32_t value = std::clamp( data[ x ][ y ], 0.0f, 5.0f ) * ( 1 << 16 );
-				maxHeight = std::max( maxHeight, value ); // need to know this for dropping particles?
+				int32_t value = std::clamp( data[ x ][ y ], 0.0f, 5.0f ) * ( 1 << 24 );
+				globalData.maxHeight = std::max( globalData.maxHeight, value ); // need to know this for dropping particles?
 				heightmap.emplace_back( value );
 			}
 		}
