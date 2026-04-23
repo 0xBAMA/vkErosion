@@ -200,6 +200,7 @@ void PrometheusInstance::Draw () {
 	VK_CHECK( vkBeginCommandBuffer( cmd, &cmdBeginInfo ) );
 
 	// put the core images into a general format
+	vkutil::transition_image( cmd, Heightmap.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL );
 	vkutil::transition_image( cmd, LenticularLUT.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL );
 	vkutil::transition_image( cmd, Accumulator.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL );
 	vkutil::transition_image( cmd, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL );
@@ -227,6 +228,8 @@ void PrometheusInstance::Draw () {
 		};
 		vkCmdPipelineBarrier2( cmd, &barrierDependency );
 	}
+
+	HeightmapErode.invoke( cmd );
 
 	// invoke the render process
 	static bool firstTime = true;
@@ -699,7 +702,7 @@ void PrometheusInstance::initResources () {
 	}
 
 	{ // creating the heightmap
-		const uint32_t dim = 1024;
+		const uint32_t dim = 2048;
 			long unsigned int seed = std::chrono::system_clock::now().time_since_epoch().count();
 
 			std::default_random_engine engine{ seed };
@@ -1074,7 +1077,8 @@ void PrometheusInstance::initComputePasses () {
 			DescriptorLayoutBuilder builder;
 			builder.add_binding( 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ); // global config UBO
 			builder.add_binding( 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ); // draw image
-			builder.add_binding( 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ); // XYZ Buffer -> linear filter
+			builder.add_binding( 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ); // accumulator buffer -> linear filter
+			builder.add_binding( 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE );
 			BufferPresent.descriptorSetLayout = builder.build( device, VK_SHADER_STAGE_COMPUTE_BIT );
 			SetDebugName( VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, ( uint64_t ) BufferPresent.descriptorSetLayout, "Buffer Present Descriptor Set Layout" );
 		}
@@ -1135,6 +1139,7 @@ void PrometheusInstance::initComputePasses () {
 				writer.write_buffer( 0, GlobalUBO.buffer, sizeof( GlobalData ), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER );
 				writer.write_image( 1, drawImage.imageView, defaultSamplerNearest, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE );
 				writer.write_image( 2, Accumulator.imageView, defaultSamplerLinear, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER );
+				writer.write_image( 3, Heightmap.imageView, defaultSamplerNearest, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE );
 				writer.update_set( device, BufferPresent.descriptorSet );
 			}
 

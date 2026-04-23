@@ -13,6 +13,9 @@ layout ( rgba16f, set = 0, binding = 1 ) uniform image2D image;
 // the state image
 layout ( set = 0, binding = 2 ) uniform sampler2D state;
 
+// for debug purposes
+layout ( r32i, set = 0, binding = 3 ) uniform iimage2D heightmap;
+
 vec3 TonemapUchimura2 ( vec3 v ) {
 	const float P = 1.0;  // max display brightness
 	const float a = 1.7;  // contrast
@@ -47,5 +50,7 @@ void main () {
 	vec3 color = GlobalData.brightnessScalar * texture( state, loc ).rgb;
 
 	// Sample the image and store the result
-	imageStore( image, ivec2( gl_GlobalInvocationID.xy ), vec4( TonemapUchimura2( color ), 1.0f ) );
+//	imageStore( image, ivec2( gl_GlobalInvocationID.xy ), vec4( TonemapUchimura2( color ), 1.0f ) );
+
+	imageStore( image, ivec2( gl_GlobalInvocationID.xy ), vec4( imageLoad( heightmap, ivec2( gl_GlobalInvocationID.xy ) ).r / float( GlobalData.maxHeight ) ) );
 }
