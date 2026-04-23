@@ -78,6 +78,15 @@ struct GlobalData {
 
 	int linearFilter = 0;
 	int numRepeats = 1;
+
+	// simulation parameters
+	float timeStep = 1.2f;
+	float density = 1.0f; // to determine intertia
+	float evaporationRate = 0.001f;
+	float depositionRate = 0.1f;
+	float minVolume = 0.01f;
+	float friction = 0.05f;
+
 	int maxHeight = 0;
 };
 

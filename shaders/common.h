@@ -42,6 +42,13 @@ layout( set = 0, binding = 0, scalar ) uniform globalData {
 	int linearFilter;
 	int numRepeats;
 
+	// simulation parameters
+	float timeStep;
+	float density;
+	float evaporationRate;
+	float depositionRate;
+	float minVolume;
+	float friction;
 
 	int maxHeight;
 	// nsight layout: vec2u; vec2u; vec3; int; int; float; float; vec3; vec3; vec3; vec3; vec3; vec3; float; int; int; float; float; int; int;
