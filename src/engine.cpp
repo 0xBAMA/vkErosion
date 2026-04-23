@@ -777,11 +777,116 @@ void PrometheusInstance::initResources () {
 }
 
 void PrometheusInstance::initComputePasses () {
+
+	// need to start distilling out the unique pieces and get the default stuff defaulted
+		// string identifier -> used for debug labels
+		// descriptor layout
+		// path to the shader
+		// descriptor writing
+		// invoke:
+			// dispatch sizing
+			// barriers
+
+	{ // shader to run the particle erosion process
+		{ // descriptor layout
+			DescriptorLayoutBuilder builder;
+			builder.add_binding( 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ); // global config UBO
+			builder.add_binding( 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ); // LUT texture
+			builder.add_binding( 2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ); // heightmap texture
+			HeightmapErode.descriptorSetLayout = builder.build( device, VK_SHADER_STAGE_COMPUTE_BIT );
+			SetDebugName( VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, ( uint64_t ) HeightmapErode.descriptorSetLayout, "Heightmap Erode Descriptor Set Layout" );
+		}
+
+		{ // pipeline layout + compute pipeline
+			VkPushConstantRange pushConstant{};
+			pushConstant.offset = 0;
+			pushConstant.size = sizeof( PushConstants );
+			pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+			VkPipelineLayoutCreateInfo computeLayout{};
+			computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+			computeLayout.pNext = nullptr;
+			computeLayout.pSetLayouts = &HeightmapErode.descriptorSetLayout;
+			computeLayout.setLayoutCount = 1;
+			computeLayout.pPushConstantRanges = &pushConstant;
+			computeLayout.pushConstantRangeCount = 1;
+
+			VK_CHECK( vkCreatePipelineLayout( device, &computeLayout, nullptr, &HeightmapErode.pipelineLayout ) );
+			SetDebugName( VK_OBJECT_TYPE_PIPELINE_LAYOUT, ( uint64_t ) HeightmapErode.pipelineLayout, "Heightmap Erode Pipeline Layout" );
+
+			VkShaderModule HeightmapErodeShader;
+			if ( !vkutil::load_shader_module("../shaders/heightmapErode.comp.glsl.spv", device, &HeightmapErodeShader ) ) {
+				fmt::print( "Error when building the Heightmap Erode Compute Shader\n" );
+			}
+			SetDebugName( VK_OBJECT_TYPE_SHADER_MODULE, ( uint64_t ) HeightmapErodeShader, "Heightmap Erode Shader Module" );
+
+			VkPipelineShaderStageCreateInfo stageinfo{};
+			stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+			stageinfo.pNext = nullptr;
+			stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+			stageinfo.module = HeightmapErodeShader;
+			stageinfo.pName = "main";
+
+			VkComputePipelineCreateInfo computePipelineCreateInfo{};
+			computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+			computePipelineCreateInfo.pNext = nullptr;
+			computePipelineCreateInfo.layout = HeightmapErode.pipelineLayout;
+			computePipelineCreateInfo.stage = stageinfo;
+
+			VK_CHECK( vkCreateComputePipelines( device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &HeightmapErode.pipeline ) );
+			SetDebugName( VK_OBJECT_TYPE_PIPELINE, ( uint64_t ) HeightmapErode.pipeline, "Heightmap Erode Compute Pipeline" );
+			vkDestroyShaderModule( device, HeightmapErodeShader, nullptr );
+
+			// deletors for the pipeline layout + pipeline
+			mainDeletionQueue.push_function( [ & ] () {
+				vkDestroyDescriptorSetLayout( device, HeightmapErode.descriptorSetLayout, nullptr );
+				vkDestroyPipelineLayout( device, HeightmapErode.pipelineLayout, nullptr );
+				vkDestroyPipeline( device, HeightmapErode.pipeline, nullptr );
+			});
+		}
+
+		// invoke() lambda
+		HeightmapErode.invoke = [ & ] ( VkCommandBuffer cmd ){
+			// dynamic descriptor allocation, to bind a texture
+			HeightmapErode.descriptorSet = getCurrentFrame().frameDescriptors.allocate( device, HeightmapErode.descriptorSetLayout );
+			{
+				DescriptorWriter writer;
+				writer.write_buffer( 0, GlobalUBO.buffer, sizeof( GlobalData ), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER );
+				writer.write_image( 1, LenticularLUT.imageView, defaultSamplerNearest, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE );
+				writer.write_image( 2, Heightmap.imageView, defaultSamplerNearest, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE );
+				writer.update_set( device, HeightmapErode.descriptorSet );
+			}
+
+			vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_COMPUTE, HeightmapErode.pipeline );
+
+			// bind the descriptor set, as just recorded
+			vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_COMPUTE, HeightmapErode.pipelineLayout, 0, 1, &HeightmapErode.descriptorSet, 0, nullptr );
+
+			// get a new wang RNG seed
+			HeightmapErode.pushConstants.wangSeed = genWangSeed();
+
+			// send the current value of the push constants
+			vkCmdPushConstants( cmd, HeightmapErode.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof( PushConstants ), &HeightmapErode.pushConstants );
+
+			// dispatch for all the pixels
+			vkCmdDispatch( cmd, 16, 16, 1 );
+
+			// VkImageMemoryBarrier2 barrier = makeImageBarrier( LenticularLUT.image, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT );
+			// VkDependencyInfo barrierDependency {
+			// 	.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+			// 	.imageMemoryBarrierCount = 1,
+			// 	.pImageMemoryBarriers = &barrier,
+			// };
+			// vkCmdPipelineBarrier2( cmd, &barrierDependency );
+		};
+	}
+
 	{ // shader to resolve the lenticular LUT
 		{ // descriptor layout
 			DescriptorLayoutBuilder builder;
 			builder.add_binding( 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ); // global config UBO
 			builder.add_binding( 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ); // LUT texture
+			builder.add_binding( 2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ); // heightmap texture
 			LenticularResolve.descriptorSetLayout = builder.build( device, VK_SHADER_STAGE_COMPUTE_BIT );
 			SetDebugName( VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, ( uint64_t ) LenticularResolve.descriptorSetLayout, "Lenticular Resolve Descriptor Set Layout" );
 		}
