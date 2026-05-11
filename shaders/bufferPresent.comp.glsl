@@ -52,5 +52,5 @@ void main () {
 	// Sample the image and store the result
 //	imageStore( image, ivec2( gl_GlobalInvocationID.xy ), vec4( TonemapUchimura2( color ), 1.0f ) );
 
-	imageStore( image, ivec2( gl_GlobalInvocationID.xy ), vec4( imageLoad( heightmap, ivec2( gl_GlobalInvocationID.xy ) ).r / float( GlobalData.maxHeight ) ) );
+	imageStore( image, ivec2( gl_GlobalInvocationID.xy ), fract( 10.0f * vec4( imageLoad( heightmap, ivec2( gl_GlobalInvocationID.xy ) ).r / float( GlobalData.maxHeight ) ) ) );
 }

@@ -80,7 +80,7 @@ struct GlobalData {
 	int numRepeats = 1;
 
 	// simulation parameters
-	float timeStep = 1.2f;
+	float timeStep = 1.0f;
 	float density = 1.0f; // to determine intertia
 	float evaporationRate = 0.001f;
 	float depositionRate = 0.1f;

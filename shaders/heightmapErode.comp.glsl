@@ -17,14 +17,43 @@ vec3 getNormal ( vec2 loc ) {
 	// get position within pixel..
 		// do the same test as the point sprites, cheaper than ray-sphere
 
-	// analytic solution via pythagoras
+	vec3 normal;
+
+	/*
+	// analytic solution via pythagoras -> too uniform, peening effect
 //	vec2 centered = fract( loc ) * 2.0f - vec2( 1.0f );
-	vec2 centered = fract( loc );
+	vec2 centered = fract( loc ) - 0.5f;
 	float radiusSquared = dot( centered, centered );
 	if ( radiusSquared > 1.0f ) { // not on the sphere
-		return normalize( vec3( normalize( centered ), 1.0f ) );
+		normal = normalize( vec3( normalize( centered ), 1.0f ) );
+	} else {
+		normal = vec3( centered, sqrt( 1.0f - radiusSquared ) );
 	}
-	return vec3( centered, sqrt( 1.0f - radiusSquared ) );
+	*/
+
+	// linear interpolation is always an option
+	vec2 floorCoord = floor( loc );
+	vec2 fractCoord = fract( loc );
+	vec4 samples = vec4(
+		imageLoad( heightmap, ivec2( floorCoord.x, floorCoord.y ) ).r / float( GlobalData.maxHeight ),
+		imageLoad( heightmap, ivec2( floorCoord.x + 1, floorCoord.y ) ).r / float( GlobalData.maxHeight ),
+		imageLoad( heightmap, ivec2( floorCoord.x, floorCoord.y + 1 ) ).r / float( GlobalData.maxHeight ),
+		imageLoad( heightmap, ivec2( floorCoord.x + 1, floorCoord.y + 1 ) ).r / float( GlobalData.maxHeight )
+	);
+	float value1 = mix( samples.r, samples.g, fractCoord.x );
+	float value2 = mix( samples.b, samples.a, fractCoord.x );
+	float average = mix( value1, value2, fractCoord.y );
+
+	// doing a vector instead weighted by the relative local heights
+	vec2 fc = -fractCoord * 0.5;
+	normal = normalize(
+		vec3( -1.0f - fc.x, -1.0f - fc.y, samples.r ) +
+		vec3(  1.0f - fc.x, -1.0f - fc.y, samples.g ) +
+		vec3( -1.0f - fc.x,  1.0f - fc.y, samples.b ) +
+		vec3(  1.0f - fc.x,  1.0f - fc.y, samples.a )
+	) * vec3( -1.0f, -1.0f, 1.0f );
+
+	return normal;
 }
 
 struct particle {
@@ -58,14 +87,14 @@ void main () {
 			// simulation stop conditions:
 				// p.volume is less than or equal GlobalData.minVolume
 
-	int maxSteps = 500;
+	int maxSteps = 10;
 	while ( p.volume > GlobalData.minVolume && ( maxSteps-- != 0 ) ) {
 		// cached position
 		vec2 initialPosition = p.position;
 		vec3 normal = getNormal( p.position );
 
-		// newton's second law to calculate acceleration
-		p.speed += GlobalData.timeStep * normal.xz / ( p.volume * GlobalData.density ); // F = MA, A = F/M
+		// newton's second law to calculate acceleration -> normal.xz creates drift
+		p.speed += GlobalData.timeStep * normal.xy / ( p.volume * GlobalData.density ); // F = MA, A = F/M
 		p.position += GlobalData.timeStep * p.speed; // update position based on new speed
 		p.speed *= ( 1.0f - GlobalData.timeStep * GlobalData.friction ); // friction factor to attenuate speed
 
@@ -81,7 +110,7 @@ void main () {
 		// update sediment content, deposit on the heightmap
 		p.sedimentFraction += GlobalData.timeStep * GlobalData.depositionRate * sedimentDifference;
 		float oldValue = imageLoad( heightmap, ivec2( initialPosition.xy ) ).r / float( GlobalData.maxHeight );
-		imageAtomicAdd( heightmap, ivec2( initialPosition.xy ), int( -0.1f * ( GlobalData.timeStep * p.volume * GlobalData.depositionRate * sedimentDifference ) * float( GlobalData.maxHeight ) ) );
+		imageAtomicAdd( heightmap, ivec2( initialPosition.xy ), int( -( GlobalData.timeStep * p.volume * GlobalData.depositionRate * sedimentDifference ) * float( GlobalData.maxHeight ) ) );
 
 		// evaporate the droplet
 		p.volume *= ( 1.0f - GlobalData.timeStep * GlobalData.evaporationRate );

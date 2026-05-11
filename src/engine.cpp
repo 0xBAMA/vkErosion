@@ -702,7 +702,7 @@ void PrometheusInstance::initResources () {
 	}
 
 	{ // creating the heightmap
-		const uint32_t dim = 2048;
+		const uint32_t dim = 4096;
 			long unsigned int seed = std::chrono::system_clock::now().time_since_epoch().count();
 
 			std::default_random_engine engine{ seed };
